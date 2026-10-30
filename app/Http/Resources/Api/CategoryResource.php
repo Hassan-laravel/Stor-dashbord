@@ -15,6 +15,8 @@ class CategoryResource extends JsonResource
             'children' => CategoryResource::collection($this->whenLoaded('children')),
             // إذا كان لديك صورة للتصنيف يمكنك إضافتها هكذا:
             // 'image_url' => $this->image ? asset('storage/' . $this->image) : null,
+            // إضافة مصفوفة الترجمات لجلب الـ slug الخاص بكل لغة
+            'translations' => $this->translations,
         ];
     }
 }

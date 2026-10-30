@@ -27,6 +27,7 @@ class ProductResource extends JsonResource
             // جلب العلاقات
             'category'         => new CategoryResource($this->whenLoaded('category')),
             'store'            => new StoreResource($this->whenLoaded('store')),
+            'translations' => $this->translations,
         ];
     }
 }
