@@ -54,6 +54,7 @@ Route::prefix('admin/bol-products')->name('admin.bol-products.')->group(function
     Route::put('/{product}', [BolProductController::class, 'update'])->name('update');
     Route::delete('/{product}', [BolProductController::class, 'destroy'])->name('destroy');
 });
+
 // Route::get('/test-bol-api/{ean}', function ($ean) {
 //     $controller = new BolProductController();
 //     $result = $controller->fetchFromBolApi($ean);

@@ -224,6 +224,7 @@ public function fetchFromBolApi($ean)
         }
 
         try {
+            // 1. جلب البيانات الأساسية للمنتج
             $response = Http::withToken($token)
                 ->withHeaders([
                     'Accept'          => 'application/json',
@@ -236,79 +237,164 @@ public function fetchFromBolApi($ean)
                     'include-rating'        => 'true',
                 ]);
 
-            if ($response->successful()) {
-                $data = $response->json();
-Log::info('Bol API Response Data: ', $data);
-                // استخراج السعر والعروض من الكائن offer
-                $price = $data['offer']['price'] ?? 0.00;
-                $originalPrice = $data['offer']['strikethroughPrice'] ?? null;
-                
-                $discountPercentage = 0;
-                if ($originalPrice && $originalPrice > $price) {
-                    $discountPercentage = round((($originalPrice - $price) / $originalPrice) * 100);
-                }
-
-                // استخراج رابط الصورة الأساسية
-                $imageUrl = $data['image']['url'] ?? null;
-                
-                // رابط المنتج الرسمي من الاستجابة مع دمج كود الشريك (Affiliate Tag)
-                $productUrl = $data['url'] ?? "https://www.bol.com/nl/nl/p/product/{$ean}";
-                $affiliateUrl = $productUrl . (str_contains($productUrl, '?') ? '&' : '?') . 'Referrer=' . env('BOL_AFFILIATE_TAG', '');
-
-                return [
-                    'title'               => $data['title'] ?? 'Bol Product ' . $ean,
-                    'price'               => $price,
-                    'original_price'      => $originalPrice,
-                    'discount_percentage' => $discountPercentage,
-                    'description'         => $data['description'] ?? null,
-                    'image_url'           => $imageUrl,
-                    'gallery_images'      => $imageUrl ? json_encode([$imageUrl]) : null,
-                    'link'                => $affiliateUrl,
-                    'rating'              => $data['rating'] ?? 4.5, // تم جلبها مباشرة من الجذر الرئيسي للـ JSON
-                    'reviews_count'       => 10, // بول لا يرجع عدد المراجعات الرقمي مباشرة في هذا الـ Endpoint، لذا نضع قيمة افتراضية
-                    'availability'        => $data['offer']['deliveryDescription'] ?? 'Op voorraad',
-                ];
-            } else {
+            if (!$response->successful()) {
                 Log::error("Bol API Data Error: " . $response->body());
-                
                 if ($response->status() === 401) {
                     Cache::forget('bol_access_token');
                 }
+                return [];
             }
+
+            $data = $response->json();
+
+            $price = $data['offer']['price'] ?? 0.00;
+            $originalPrice = $data['offer']['strikethroughPrice'] ?? null;
+            
+            $discountPercentage = 0;
+            if ($originalPrice && $originalPrice > $price) {
+                $discountPercentage = round((($originalPrice - $price) / $originalPrice) * 100);
+            }
+
+            $imageUrl = $data['image']['url'] ?? null;
+           // رابط المنتج الأساسي من بول
+            $productUrl = $data['url'] ?? "https://www.bol.com/nl/nl/p/product/{$ean}";
+            
+            // جلب كود الشريك مباشرة من الـ .env الذي قمت بإعداده مسبقاً
+            $partnerId = env('BOL_AFFILIATE_TAG', '1556717'); 
+
+            // بناء الرابط الرسمي لشبكة بول بالشكل الصحيح والمطابق لصورة الشراكة
+            $affiliateUrl = "https://partner.bol.com/click/click?p=2&t=url&s={$partnerId}&f=TXL&url=" . urlencode($productUrl);
+            // 2. جلب ألبوم الصور الكامل (Media Endpoint) بناءً على التوثيق الرسمي
+          // 1. الصورة الأساسية دائماً كبداية مضمونة
+// جلب ألبوم الصور بحيث نأخذ المقاسات الكبيرة والواضحة فقط ونستبعد المصغرة جداً
+            $galleryImages = [];
+            if ($imageUrl) {
+                $galleryImages[] = $imageUrl;
+            }
+
+            try {
+                $mediaResponse = Http::withToken($token)
+                    ->withHeaders(['Accept' => 'application/json'])
+                    ->get("https://api.bol.com/marketing/catalog/v1/products/{$ean}/media");
+
+                if ($mediaResponse->successful()) {
+                    $mediaData = $mediaResponse->json();
+                    
+                    $extractedUrls = [];
+                    array_walk_recursive($mediaData, function ($value, $key) use (&$extractedUrls) {
+                        if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL) && preg_match('/\.(jpg|jpeg|png|webp)/i', $value)) {
+                            // استبعاد الاحجام الصغيرة جداً (مثل 48x، 100x، 124x) والاكتفاء بالصور الكبيرة أو الأصلية
+                            if (!preg_match('/(48x|100x|124x|168x)/i', $value)) {
+                                $extractedUrls[] = $value;
+                            }
+                        }
+                    });
+
+                    if (!empty($extractedUrls)) {
+                        $galleryImages = array_merge($galleryImages, $extractedUrls);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error("Bol Media Exception: " . $e->getMessage());
+            }
+
+            // إزالة الروابط المكررة والاحتفاظ بنسخة فريدة ونظيفة
+            $galleryImages = array_values(array_unique($galleryImages));
+            // 3. جلب توزيع التقييمات وعدد المراجعات (Ratings Endpoint)
+// 3. جلب توزيع التقييمات وعدد المراجعات (Ratings Endpoint) وتنسيقها على شكل أمازون
+            $rating = $data['rating'] ?? 4.5;
+            $reviewsCount = 0;
+            $ratingDistribution = null;
+
+            try {
+                $ratingsResponse = Http::withToken($token)
+                    ->withHeaders(['Accept' => 'application/json'])
+                    ->get("https://api.bol.com/marketing/catalog/v1/products/{$ean}/ratings");
+
+                if ($ratingsResponse->successful()) {
+                    $ratingsData = $ratingsResponse->json();
+                    $rating = $ratingsData['averageRating'] ?? $rating;
+                    
+                    if (!empty($ratingsData['ratings']) && is_array($ratingsData['ratings'])) {
+                        $amazonStyleDistribution = [];
+                        
+                        foreach ($ratingsData['ratings'] as $rateItem) {
+                            $star = $rateItem['rating'] ?? null;
+                            $count = $rateItem['count'] ?? 0;
+                            
+                            if ($star !== null) {
+                                // تخزين المفتاح كـ "رقم النجمة" والقيمة كـ "العدد" تماماً مثل أمازون {"1":7, "2":10, ...}
+                                $amazonStyleDistribution[(string)$star] = $count;
+                                $reviewsCount += $count;
+                            }
+                        }
+                        
+                        // تخزينها كـ JSON بالشكل المطلوب للفرونت إند
+                        $ratingDistribution = json_encode($amazonStyleDistribution);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error("Bol Ratings Exception: " . $e->getMessage());
+            }
+
+            if ($reviewsCount === 0) {
+                $reviewsCount = 5;
+            }
+            return [
+                'title'               => $data['title'] ?? 'Bol Product ' . $ean,
+                'price'               => $price,
+                'original_price'      => $originalPrice,
+                'discount_percentage' => $discountPercentage,
+                'description'         => $data['description'] ?? null,
+                'image_url'           => $imageUrl,
+                'gallery_images'      => json_encode($galleryImages),
+                'link'                => $affiliateUrl,
+                'rating'              => $rating,
+                'reviews_count'       => $reviewsCount,
+                'rating_distribution' => $ratingDistribution,
+                'availability'        => $data['offer']['deliveryDescription'] ?? 'Op voorraad',
+            ];
+
         } catch (\Exception $e) {
             Log::error("Bol API Exception: " . $e->getMessage());
         }
 
         return [];
     }
-
     private function translateText($text, $sourceLang, $targetLang)
     {
         if (empty($text)) return '';
+
         try {
             $url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=" . $sourceLang . "&tl=" . $targetLang . "&dt=t&q=" . urlencode($text);
+
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
             $response = curl_exec($ch);
             curl_close($ch);
 
             if ($response) {
                 $result = json_decode($response, true);
                 $translatedText = '';
+
                 if (isset($result[0])) {
                     foreach ($result[0] as $segment) {
                         $translatedText .= $segment[0] ?? '';
                     }
                 }
+
                 return !empty($translatedText) ? $translatedText : $text;
             }
         } catch (\Exception $e) {
             Log::error("Translation Exception: " . $e->getMessage());
         }
+
         return $text;
     }
+
 }
