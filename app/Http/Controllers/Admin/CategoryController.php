@@ -137,7 +137,7 @@ public function create()
         $categoryData = [
             'parent_id' => $request->input('parent_id'),
             'image'     => $request->input('image'),
-            'is_active' => $request->has('is_active') ? $request->input('is_active') : $category->is_active,
+          'is_active' => $request->has('is_active') ? 1 : 0,
         ];
 
         foreach ($locales as $locale) {

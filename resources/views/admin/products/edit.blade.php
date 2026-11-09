@@ -193,5 +193,78 @@
             }
         });
     });
+    // التعبئة التلقائية لحقول السيو بناءً على العنوان والوصف لكل لغة
+    document.addEventListener('DOMContentLoaded', function() {
+        const locales = @json($locales);
+        
+        locales.forEach(locale => {
+            const titleInput = document.querySelector(`input[name="${locale}[title]"]`);
+            const metaTitleInput = document.querySelector(`input[name="${locale}[meta_title]"]`);
+            const metaKeywordsInput = document.querySelector(`input[name="${locale}[meta_keywords]"]`);
+            
+            // Textarea أو محرر الوصف لكل لغة
+            const descTextarea = document.querySelector(`textarea[name="${locale}[content]"]`);
+            const metaDescInput = document.querySelector(`textarea[name="${locale}[meta_description]"]`);
+
+            if (titleInput) {
+                titleInput.addEventListener('input', function() {
+                    let val = this.value;
+
+                    // 1. تعبئة Meta Title تلقائياً إذا كان فارغاً أو كان يتبع القيمة التلقائية السابقة
+                    if (metaTitleInput && (!metaTitleInput.value || metaTitleInput.value === metaTitleInput.dataset.auto)) {
+                        metaTitleInput.value = val;
+                        metaTitleInput.dataset.auto = val;
+                    }
+
+                    // 2. تعبئة Meta Keywords تلقائياً (تحويل المسافات إلى فواصل بين الكلمات)
+                    if (metaKeywordsInput && (!metaKeywordsInput.value || metaKeywordsInput.value === metaKeywordsInput.dataset.auto)) {
+                        let keywords = val.trim().split(/\s+/).filter(Boolean).join(', ');
+                        metaKeywordsInput.value = keywords;
+                        metaKeywordsInput.dataset.auto = keywords;
+                    }
+                });
+            }
+
+            // التعامل مع الوصف ومحرر TinyMCE لإزالة التنسيقات عند وضعه في Meta Description
+if (descTextarea) {
+                // دالة لتحديث الوصف مع إزالة الأسطر والفراغات المتعددة ودمجها في سطر واحد
+                const updateMetaDesc = () => {
+                    let content = "";
+                    
+                    // 1. جلب النص من محرر TinyMCE أو حقل النص العادي
+                    if (typeof tinymce !== 'undefined' && tinymce.get(descTextarea.id || descTextarea.name)) {
+                        content = tinymce.get(descTextarea.id || descTextarea.name).getContent({ format: 'text' });
+                    } else {
+                        let tmp = document.createElement("DIV");
+                        tmp.innerHTML = descTextarea.value;
+                        content = tmp.textContent || tmp.innerText || "";
+                    }
+
+                    // 2. إزالة الأسطر الجديدة (Newlines) والفراغات المتعددة ودمج النص بمسافة واحدة فقط
+                    content = content.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    // 3. تعبئة الحقل تلقائياً
+                    if (metaDescInput && (!metaDescInput.value || metaDescInput.value === metaDescInput.dataset.auto)) {
+                        metaDescInput.value = content;
+                        metaDescInput.dataset.auto = content;
+                    }
+                };
+
+                // الاستماع لتغييرات المحرر
+                setTimeout(() => {
+                    if (typeof tinymce !== 'undefined') {
+                        let editor = tinymce.get(descTextarea.id || descTextarea.name);
+                        if (editor) {
+                            editor.on('input keyup change', function() {
+                                updateMetaDesc();
+                            });
+                        }
+                    }
+                }, 1000);
+
+                descTextarea.addEventListener('input', updateMetaDesc);
+            }
+        });
+    });
 </script>
 @endsection

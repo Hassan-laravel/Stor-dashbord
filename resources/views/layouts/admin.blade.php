@@ -129,6 +129,10 @@
                         class="{{ request()->routeIs('admin.products.*') ? 'active' : '' }}">
                         <i class="fas fa-box"></i> Products
                     </a>
+                    <a href="{{ route('admin.bol-products.index') }}"
+                        class="list-group-item list-group-item-action bg-transparent border-0 {{ request()->routeIs('admin.bol-products.*') ? 'active fw-bold' : '' }}">
+                        <i class="fas fa-box-open text-primary me-2"></i> Bol.com Products
+                    </a>
                 </li>
                 <li>
                     <a href="{{ route('admin.post-categories.index') }}">

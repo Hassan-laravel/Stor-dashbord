@@ -50,7 +50,8 @@ class ProductApiController extends Controller
             $query->latest();
         }
 
-        $products = $query->paginate(15);
+        // $products = $query->paginate(15);
+        $products = $query->get();
 
         return ProductResource::collection($products);
     }

@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\PostApiController;
 use App\Http\Controllers\Api\PostCategoryApiController;
 use App\Http\Controllers\Api\SocialMediaApiController;
 use App\Http\Controllers\Api\GlobalApiController;
-
+use App\Http\Controllers\Api\SettingApiController;
 Route::middleware('api.locale')->prefix('v1')->group(function () {
     
     // الإعدادات العامة للموقع
@@ -36,4 +36,5 @@ Route::middleware('api.locale')->prefix('v1')->group(function () {
     
     // روابط السوشيال ميديا (كنقطة نهاية مستقلة إذا لم ترغب بدمجها في init-data)
     Route::get('/social-media', [SocialMediaApiController::class, 'index']);
+    Route::get('/settings', [SettingApiController::class, 'index']);
 });

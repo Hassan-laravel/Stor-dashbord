@@ -29,6 +29,7 @@ protected $fillable = [
         'sales_volume',
         'is_amazon_choice',
         'availability',
+        'rating_distribution',
     ];
     public $translatedAttributes = [
         'title', 'slug', 'content', 'meta_title', 'meta_description', 'meta_keywords'
@@ -37,6 +38,7 @@ protected $fillable = [
     protected $casts = [
         'gallery_images' => 'array',
         'in_stock' => 'boolean',
+        'rating_distribution' => 'array',
     ];
 
     public function store()
